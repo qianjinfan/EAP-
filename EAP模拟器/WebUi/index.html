@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EAP 模拟器</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="accent"></div>
+    <div class="topbar-inner">
+      <h1 class="brand">EAP 模拟器</h1>
+      <p class="subtitle">SECS/GEM 客户端</p>
+      <div class="status-pill" id="connStatus" data-state="off">未连接</div>
+    </div>
+    <div class="connect-row">
+      <label>IP</label>
+      <input type="text" id="ip" value="127.0.0.1" autocomplete="off" />
+      <label>端口</label>
+      <input type="text" id="port" value="5000" class="input-narrow" />
+      <label>DeviceID</label>
+      <input type="text" id="deviceId" value="0" class="input-narrow" />
+      <label class="chk"><input type="checkbox" id="active" checked /> Active</label>
+      <button type="button" id="btnConnect" class="btn primary">连接</button>
+      <button type="button" id="btnDisconnect" class="btn" disabled>断开</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <aside class="sidebar">
+      <div class="side-head">命令列表</div>
+      <ul class="cmd-list" id="cmdList"></ul>
+      <div class="side-actions">
+        <button type="button" id="btnAdd" class="btn secondary">新增</button>
+        <button type="button" id="btnDelete" class="btn secondary danger">删除</button>
+      </div>
+    </aside>
+
+    <main class="editor">
+      <div class="card">
+        <h2 class="card-title">命令编辑</h2>
+        <div class="field-row">
+          <label for="name">名称</label>
+          <input type="text" id="name" class="grow" />
+        </div>
+        <div class="field-row tight">
+          <label for="stream">Stream</label>
+          <input type="number" id="stream" min="0" max="127" class="input-num" />
+          <label for="function">Function</label>
+          <input type="number" id="function" min="0" max="255" class="input-num" />
+          <label class="chk"><input type="checkbox" id="waitReply" checked /> 等待回复 (W-bit)</label>
+        </div>
+        <label class="block-label" for="sml">消息体 (SML)</label>
+        <textarea id="sml" spellcheck="false" class="code"></textarea>
+        <div class="card-actions">
+          <button type="button" id="btnSave" class="btn primary">保存命令</button>
+          <button type="button" id="btnSend" class="btn accent">发送命令</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="log-panel">
+    <div class="log-head">
+      <span>消息日志</span>
+      <button type="button" id="btnClearLog" class="btn ghost">清空日志</button>
+    </div>
+    <pre class="log" id="log"></pre>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
