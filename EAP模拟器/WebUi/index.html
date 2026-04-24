@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,67 +7,154 @@
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="accent"></div>
-    <div class="topbar-inner">
-      <h1 class="brand">EAP 模拟器</h1>
-      <p class="subtitle">SECS/GEM 客户端</p>
-      <div class="status-pill" id="connStatus" data-state="off">未连接</div>
-    </div>
-    <div class="connect-row">
-      <label>IP</label>
-      <input type="text" id="ip" value="127.0.0.1" autocomplete="off" />
-      <label>端口</label>
-      <input type="text" id="port" value="5000" class="input-narrow" />
-      <label>DeviceID</label>
-      <input type="text" id="deviceId" value="0" class="input-narrow" />
-      <label class="chk"><input type="checkbox" id="active" checked /> Active</label>
-      <button type="button" id="btnConnect" class="btn primary">连接</button>
-      <button type="button" id="btnDisconnect" class="btn" disabled>断开</button>
-    </div>
-  </header>
-
-  <div class="main">
-    <aside class="sidebar">
-      <div class="side-head">命令列表</div>
-      <ul class="cmd-list" id="cmdList"></ul>
-      <div class="side-actions">
-        <button type="button" id="btnAdd" class="btn secondary">新增</button>
-        <button type="button" id="btnDelete" class="btn secondary danger">删除</button>
+  <div class="app">
+    <aside class="nav-rail">
+      <div class="nav-brand">
+        <span class="nav-logo">EAP</span>
+        <span class="nav-title">模拟器</span>
+      </div>
+      <nav class="nav-menu">
+        <button type="button" class="nav-item active" data-view="dashboard">仪表盘</button>
+        <button type="button" class="nav-item" data-view="dashboard">日志查看</button>
+        <button type="button" class="nav-item" data-view="dashboard">项目管理</button>
+        <button type="button" class="nav-item" data-view="settings">系统设置</button>
+      </nav>
+      <div class="nav-footer">
+        <div class="sim-status"><span class="dot"></span> 模拟器运行中</div>
+        <div class="ver">v1.0.0</div>
       </div>
     </aside>
 
-    <main class="editor">
-      <div class="card">
-        <h2 class="card-title">命令编辑</h2>
-        <div class="field-row">
-          <label for="name">名称</label>
-          <input type="text" id="name" class="grow" />
+    <div class="app-body">
+      <header class="topbar">
+        <div class="topbar-left">
+          <label class="field-label">当前项目</label>
+          <select id="projectSelect" class="select-project"></select>
+          <button type="button" id="btnNewProject" class="btn icon" title="新建项目">＋</button>
+          <button type="button" id="btnDelProject" class="btn icon danger" title="删除当前项目">🗑</button>
+          <button type="button" id="btnSaveWorkspace" class="btn ghost-sm" title="保存到磁盘">保存</button>
+          <button type="button" id="btnExportProject" class="btn ghost-sm" title="导出当前项目 JSON">导出</button>
+          <input type="file" id="importFile" accept="application/json,.json" hidden />
+          <button type="button" id="btnImportProject" class="btn ghost-sm" title="从 JSON 导入为新项目">导入</button>
         </div>
-        <div class="field-row tight">
-          <label for="stream">Stream</label>
-          <input type="number" id="stream" min="0" max="127" class="input-num" />
-          <label for="function">Function</label>
-          <input type="number" id="function" min="0" max="255" class="input-num" />
-          <label class="chk"><input type="checkbox" id="waitReply" checked /> 等待回复 (W-bit)</label>
+        <div class="topbar-right">
+          <button type="button" id="btnTheme" class="btn icon" title="切换主题">◐</button>
         </div>
-        <label class="block-label" for="sml">消息体 (SML)</label>
-        <textarea id="sml" spellcheck="false" class="code"></textarea>
-        <div class="card-actions">
-          <button type="button" id="btnSave" class="btn primary">保存命令</button>
-          <button type="button" id="btnSend" class="btn accent">发送命令</button>
-        </div>
-      </div>
-    </main>
-  </div>
+      </header>
 
-  <footer class="log-panel">
-    <div class="log-head">
-      <span>消息日志</span>
-      <button type="button" id="btnClearLog" class="btn ghost">清空日志</button>
+      <main class="content">
+        <section id="view-dashboard" class="view active">
+          <div class="dash-grid">
+            <article class="panel panel-status">
+              <h3 class="panel-title">设备状态</h3>
+              <div class="kv-grid">
+                <span class="k">IP</span><span class="v mono" id="dispIp">—</span>
+                <span class="k">端口</span><span class="v mono" id="dispPort">—</span>
+                <span class="k">协议</span><span class="v">HSMS / TCP</span>
+                <span class="k">连接时长</span><span class="v mono" id="connDuration">—</span>
+              </div>
+              <div class="stat-row">
+                <div><span class="stat-label">已发送</span><strong id="statSent">0</strong></div>
+                <div><span class="stat-label">已接收</span><strong id="statRecv">0</strong></div>
+                <div class="stat-rate"><span class="stat-label">成功率</span><div class="rate-bar"><div id="rateFill" class="rate-fill"></div></div><span id="rateText" class="rate-text">—</span></div>
+              </div>
+              <div class="conn-inline">
+                <input type="text" id="ip" value="127.0.0.1" autocomplete="off" class="inp-tiny" />
+                <input type="text" id="port" value="5000" class="inp-tiny narrow" />
+                <input type="text" id="deviceId" value="0" class="inp-tiny narrow" title="Device ID" />
+                <label class="chk sm"><input type="checkbox" id="active" checked /> Active</label>
+                <button type="button" id="btnConnect" class="btn primary sm">连接</button>
+                <button type="button" id="btnDisconnect" class="btn sm" disabled>断开</button>
+              </div>
+              <div class="conn-pill-row">
+                <span id="connStatus" class="pill" data-state="off">未连接</span>
+              </div>
+              <p class="hint conn-role-hint">
+                与 secs4net 对接：<strong>对端 <code>IsActive: false</code></strong> 表示在本地 IP/端口上<strong>监听</strong>，本模拟器须勾选 <strong>Active</strong>（作为客户端连过去），并先启动对端再点连接。
+                若对端改为 <code>IsActive: true</code> 主动连出，则这里应取消 Active，由本机监听同一端口。
+              </p>
+            </article>
+
+            <article class="panel panel-send">
+              <h3 class="panel-title">命令发送 <span class="title-tag">SECS/GEM</span></h3>
+              <p class="hint">Stream / Function 与「等待回复」决定首行；消息体<strong>只写 SECS-II 结构</strong>（不要写 <code>'S1F21' W</code> 整行）。空列表可写 <code>&lt;L</code> 换行 <code>&gt;</code>，句尾点号可省略。</p>
+              <div class="field-row">
+                <label for="name">名称</label>
+                <input type="text" id="name" class="grow" placeholder="保存到常用命令时使用" />
+              </div>
+              <div class="field-row tight">
+                <label for="stream">S</label>
+                <input type="number" id="stream" min="0" max="127" class="input-num" title="Stream" />
+                <label for="function">F</label>
+                <input type="number" id="function" min="0" max="255" class="input-num" title="Function" />
+                <label class="chk sm"><input type="checkbox" id="waitReply" checked /> 等待回复 (W)</label>
+              </div>
+              <label class="block-label" for="sml">消息体 (SML)</label>
+              <textarea id="sml" spellcheck="false" class="code"></textarea>
+              <div class="send-toolbar">
+                <button type="button" id="btnClearSml" class="btn sm">清空</button>
+                <button type="button" id="btnFormat" class="btn sm" title="去除首尾空白">整理</button>
+                <span class="grow"></span>
+                <button type="button" id="btnSave" class="btn secondary sm">保存命令</button>
+                <button type="button" id="btnSend" class="btn primary sm">发送</button>
+              </div>
+            </article>
+
+            <article class="panel panel-commands">
+              <h3 class="panel-title">常用命令 <span class="badge" id="projectBadge"></span></h3>
+              <input type="search" id="cmdSearch" class="search" placeholder="搜索名称或 SxFy…" autocomplete="off" />
+              <div class="chip-row">
+                <span class="chip active" data-filter="all">全部</span>
+                <span class="chip" data-filter="secs">SECS</span>
+              </div>
+              <ul class="cmd-cards" id="cmdList"></ul>
+              <div class="cmd-card-actions">
+                <button type="button" id="btnAdd" class="btn secondary sm">新增命令</button>
+                <button type="button" id="btnDelete" class="btn sm danger-outline">删除所选</button>
+              </div>
+            </article>
+
+            <article class="panel panel-log span-2">
+              <h3 class="panel-title">通信日志</h3>
+              <div class="log-filters">
+                <label class="chk sm"><input type="checkbox" id="fltSend" checked /> 发送</label>
+                <label class="chk sm"><input type="checkbox" id="fltRecv" checked /> 接收</label>
+                <label class="chk sm"><input type="checkbox" id="fltErr" checked /> 异常</label>
+                <button type="button" id="btnClearLog" class="btn ghost-sm">清空</button>
+              </div>
+              <div class="table-wrap">
+                <table class="comm-table" id="commTable">
+                  <thead><tr><th>时间</th><th>方向</th><th>命令</th><th>摘要</th></tr></thead>
+                  <tbody id="commTbody"></tbody>
+                </table>
+              </div>
+              <pre class="log-raw" id="log"></pre>
+            </article>
+
+            <article class="panel panel-parse">
+              <h3 class="panel-title">数据解析</h3>
+              <p class="hint">当前选中命令的 SML 预览</p>
+              <pre class="parse-pre" id="parsePre">（在右侧列表选择一条命令）</pre>
+            </article>
+
+            <article class="panel panel-tree">
+              <h3 class="panel-title">项目结构</h3>
+              <p class="hint">切换项目后，常用命令列表会切换为该项目下的指令集。</p>
+              <ul class="tree" id="projectTree"></ul>
+            </article>
+          </div>
+        </section>
+
+        <section id="view-settings" class="view">
+          <article class="panel settings-card">
+            <h3 class="panel-title">系统设置</h3>
+            <p class="hint">主题在右上角切换。工作区保存在程序目录 <code>Data/workspace.json</code>。</p>
+            <p class="hint">从旧版本迁移时，会自动读取 <code>Data/commands.json</code> 并合并为「默认项目」。</p>
+          </article>
+        </section>
+      </main>
     </div>
-    <pre class="log" id="log"></pre>
-  </footer>
+  </div>
 
   <script src="app.js"></script>
 </body>

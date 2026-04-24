@@ -65,6 +65,9 @@ public sealed class SecsClientService : IAsyncDisposable
 
         _secsGem = new SecsGem(options, _connection, logger);
 
+        // secs4net 2.4+：HsmsConnection 不再在构造时自动连接，必须调用 Start 才会发起 TCP 与 HSMS Select 握手。
+        _connection.Start(_cts.Token);
+
         // 在后台开始监听设备主动上报的消息
         _ = Task.Run(async () =>
         {

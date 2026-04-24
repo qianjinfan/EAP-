@@ -21,7 +21,7 @@ public sealed class WebAppBridge : IAsyncDisposable
     };
 
     private readonly WebView2 _web;
-    private readonly CommandStorageService _storage = new();
+    private readonly ProjectStorageService _projects = new();
     private readonly SecsClientService _secs = new();
     private CoreWebView2? _core;
     private bool _initialized;
@@ -89,20 +89,29 @@ public sealed class WebAppBridge : IAsyncDisposable
 
             switch (method)
             {
-                case "getCommands":
-                    var cmds = _storage.Load();
-                    PostReply(id, true, new { commands = cmds }, null);
+                case "getWorkspace":
+                    {
+                        var ws = _projects.Load();
+                        PostReply(id, true, new { workspace = ws }, null);
+                    }
                     break;
 
-                case "setCommands":
+                case "setWorkspace":
                     {
-                        if (!prm.TryGetProperty("commands", out var cmdArr))
+                        if (!prm.TryGetProperty("workspace", out var wsEl))
                         {
-                            PostReply(id, false, null, "缺少 commands");
+                            PostReply(id, false, null, "缺少 workspace");
                             break;
                         }
-                        var list = cmdArr.Deserialize<List<SecsCommandTemplate>>(JsonOpts) ?? [];
-                        _storage.Save(list);
+                        var ws = wsEl.Deserialize<SimulatorWorkspace>(JsonOpts);
+                        if (ws is null || ws.Projects.Count == 0)
+                        {
+                            PostReply(id, false, null, "无效工作区");
+                            break;
+                        }
+                        if (ws.Projects.All(p => p.Id != ws.CurrentProjectId))
+                            ws.CurrentProjectId = ws.Projects[0].Id;
+                        _projects.Save(ws);
                         PostReply(id, true, null, null);
                     }
                     break;
@@ -163,12 +172,24 @@ public sealed class WebAppBridge : IAsyncDisposable
                                 msg = new SecsMessage(s, f, replyExpected: wait);
                             else
                             {
-                                var sml = $"S{s}F{f} {(wait ? "W" : "")}\n{smlBody.Trim()}.";
+                                // Secs4Net.Sml.SmlReader 要求首行为 'SxFy' [W]（带单引号）；原先拼成 SxFy 会导致解析越界异常。
+                                var body = smlBody.Trim();
+                                while (body.EndsWith('.'))
+                                    body = body[..^1].TrimEnd();
+                                var header = wait ? $"'S{s}F{f}' W" : $"'S{s}F{f}'";
+                                var sml = string.IsNullOrEmpty(body)
+                                    ? $"{header}\n."
+                                    : $"{header}\n{body}\n.";
                                 msg = SmlReader.ToSecsMessage(sml);
                             }
 
-                            await _secs.SendAsync(msg).ConfigureAwait(true);
-                            PostReply(id, true, new { }, null);
+                            var reply = await _secs.SendAsync(msg).ConfigureAwait(true);
+                            PostReply(id, true, new
+                            {
+                                reply = reply is null
+                                    ? null
+                                    : new { stream = (int)reply.S, function = (int)reply.F },
+                            }, null);
                         }
                         catch (Exception ex)
                         {
