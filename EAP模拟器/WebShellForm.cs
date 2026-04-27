@@ -1,3 +1,4 @@
+using System.Drawing;
 using Microsoft.Web.WebView2.WinForms;
 
 namespace EAP模拟器;
@@ -7,7 +8,12 @@ namespace EAP模拟器;
 /// </summary>
 public sealed class WebShellForm : Form
 {
-    private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
+    /// <summary>与 WebUi app.css 浅色 --bg-app 一致，减轻引擎初始化到首屏绘制之间的白屏感。</summary>
+    private readonly WebView2 _webView = new()
+    {
+        Dock = DockStyle.Fill,
+        DefaultBackgroundColor = Color.FromArgb(223, 231, 242),
+    };
     private WebAppBridge? _bridge;
 
     public WebShellForm()

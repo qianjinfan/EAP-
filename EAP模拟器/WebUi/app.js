@@ -75,6 +75,8 @@
   const sml = el("sml");
   const parsePre = el("parsePre");
   const btnAdd = el("btnAdd");
+  const btnMoveCmdUp = el("btnMoveCmdUp");
+  const btnMoveCmdDown = el("btnMoveCmdDown");
   const btnDelete = el("btnDelete");
   const btnSave = el("btnSave");
   const btnSend = el("btnSend");
@@ -290,6 +292,36 @@
     });
   }
 
+  function updateCmdReorderButtons() {
+    const cmds = currentCommands();
+    const idx = cmds.findIndex((x) => normId(x.id) === normId(selectedId));
+    const ok = idx >= 0;
+    btnMoveCmdUp.disabled = !ok || idx === 0;
+    btnMoveCmdDown.disabled = !ok || idx >= cmds.length - 1;
+  }
+
+  async function moveSelectedCommand(delta) {
+    if (delta !== 1 && delta !== -1) return;
+    const cmds = currentCommands();
+    const idx = cmds.findIndex((x) => normId(x.id) === normId(selectedId));
+    if (idx < 0) return;
+    const j = idx + delta;
+    if (j < 0 || j >= cmds.length) return;
+    const [item] = cmds.splice(idx, 1);
+    cmds.splice(j, 0, item);
+    try {
+      await persistWorkspace();
+      renderCmdList();
+      renderProjectTree();
+      updateParsePreview();
+    } catch (err) {
+      const [rollback] = cmds.splice(j, 1);
+      cmds.splice(idx, 0, rollback);
+      appendLog(`调整顺序失败: ${err.message}`);
+      updateCmdReorderButtons();
+    }
+  }
+
   function commandMatchesFilter(c) {
     const q = cmdSearch.value.trim().toLowerCase();
     if (q) {
@@ -317,6 +349,7 @@
       li.addEventListener("click", () => selectCommand(id));
       cmdList.appendChild(li);
     });
+    updateCmdReorderButtons();
   }
 
   function updateParsePreview() {
@@ -409,6 +442,9 @@
     }
     onConnectionEvent({ connected: false, state: "Retry" });
   });
+
+  btnMoveCmdUp.addEventListener("click", () => void moveSelectedCommand(-1));
+  btnMoveCmdDown.addEventListener("click", () => void moveSelectedCommand(1));
 
   btnAdd.addEventListener("click", async () => {
     const c = {
