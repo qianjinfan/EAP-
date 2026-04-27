@@ -10,6 +10,12 @@ public sealed class SimulatorProject
     public string Name { get; set; } = "未命名项目";
 
     public List<SecsCommandTemplate> Commands { get; set; } = [];
+
+    /// <summary>
+    /// 项目对应的 Excel 时序表（解析后的第一张 sheet）。
+    /// 导入一次后持久化到 workspace.json，后续可直接查看；内容更新时可重新导入覆盖。
+    /// </summary>
+    public ExcelSequenceSheet? ExcelSheet { get; set; }
 }
 
 /// <summary>

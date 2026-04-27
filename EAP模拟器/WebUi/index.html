@@ -17,6 +17,7 @@
         <button type="button" class="nav-item active" data-view="dashboard">仪表盘</button>
         <button type="button" class="nav-item" data-view="dashboard">日志查看</button>
         <button type="button" class="nav-item" data-view="dashboard">项目管理</button>
+        <button type="button" class="nav-item" data-view="excel">时序表</button>
         <button type="button" class="nav-item" data-view="settings">系统设置</button>
       </nav>
       <div class="nav-footer">
@@ -152,6 +153,38 @@
             <h3 class="panel-title">系统设置</h3>
             <p class="hint">主题在右上角切换。工作区保存在程序目录 <code>Data/workspace.json</code>。</p>
             <p class="hint">从旧版本迁移时，会自动读取 <code>Data/commands.json</code> 并合并为「默认项目」。</p>
+          </article>
+        </section>
+
+        <section id="view-excel" class="view">
+          <article class="panel excel-card">
+            <div class="excel-head">
+              <h3 class="panel-title">项目时序表（Excel）</h3>
+              <div class="excel-actions">
+                <label class="field-label">项目</label>
+                <select id="excelProjectSelect" class="select-project"></select>
+                <input type="file" id="excelFile" accept=".xlsx" hidden />
+                <button type="button" id="btnImportExcel" class="btn secondary sm">导入/更新</button>
+              </div>
+            </div>
+            <p class="hint" id="excelMeta">未导入 Excel。</p>
+            <div class="excel-table-wrap">
+              <table class="excel-table" id="excelTable">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>步骤(A)</th>
+                    <th>方向</th>
+                    <th>EAP(B)</th>
+                    <th>设备(D)</th>
+                    <th>期望(E)</th>
+                    <th>OP(F)</th>
+                    <th>备注(G)</th>
+                  </tr>
+                </thead>
+                <tbody id="excelTbody"></tbody>
+              </table>
+            </div>
           </article>
         </section>
       </main>

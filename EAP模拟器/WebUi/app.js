@@ -95,6 +95,11 @@
   const btnImportProject = el("btnImportProject");
   const importFile = el("importFile");
   const btnTheme = el("btnTheme");
+  const excelProjectSelect = el("excelProjectSelect");
+  const excelFile = el("excelFile");
+  const btnImportExcel = el("btnImportExcel");
+  const excelMeta = el("excelMeta");
+  const excelTbody = el("excelTbody");
 
   /** @type {{ projects: any[], currentProjectId: string }} */
   let workspace = { projects: [], currentProjectId: "" };
@@ -255,13 +260,16 @@
 
   function renderProjectSelect() {
     projectSelect.innerHTML = "";
+    excelProjectSelect.innerHTML = "";
     workspace.projects.forEach((p) => {
       const o = document.createElement("option");
       o.value = normId(p.id);
       o.textContent = p.name || "未命名";
       projectSelect.appendChild(o);
+      excelProjectSelect.appendChild(o.cloneNode(true));
     });
     projectSelect.value = normId(workspace.currentProjectId);
+    excelProjectSelect.value = normId(workspace.currentProjectId);
   }
 
   function renderProjectTree() {
@@ -398,11 +406,13 @@
     renderCmdList();
     const p = currentProject();
     projectBadge.textContent = p ? `· ${p.name}` : "";
+    renderExcelView();
   }
 
   function selectProject(projectId) {
     workspace.currentProjectId = normId(projectId);
     projectSelect.value = workspace.currentProjectId;
+    excelProjectSelect.value = workspace.currentProjectId;
     selectedId = null;
     const cmds = currentCommands();
     renderProjectTree();
@@ -411,6 +421,38 @@
     if (cmds.length) selectCommand(normId(cmds[0].id));
     else clearEditor();
     void persistWorkspace();
+    renderExcelView();
+  }
+
+  function renderExcelView() {
+    if (!excelMeta || !excelTbody) return;
+    const p = currentProject();
+    excelTbody.innerHTML = "";
+    const sheet = p?.excelSheet;
+    if (!sheet || !Array.isArray(sheet.rows) || sheet.rows.length === 0) {
+      excelMeta.textContent = "未导入 Excel。点击「导入/更新」选择该项目对应的 xlsx 文件。";
+      return;
+    }
+    const fn = sheet.fileName || "（未命名）";
+    const tm = sheet.importedAt || "";
+    excelMeta.textContent = tm ? `已导入：${fn}（${tm}）` : `已导入：${fn}`;
+
+    for (const r of sheet.rows) {
+      const tr = document.createElement("tr");
+      const dir = (r.direction || "").trim();
+      const dirLabel = dir === ">>>" ? ">>>" : dir === "<<<" ? "<<<" : "";
+      const dirCls = dir === ">>>" ? "excel-dir-send" : dir === "<<<" ? "excel-dir-recv" : "";
+      tr.innerHTML =
+        `<td class="mono">${escapeHtml(r.excelRow ?? "")}</td>` +
+        `<td>${escapeHtml(r.a ?? "")}</td>` +
+        `<td class="${dirCls} mono">${escapeHtml(dirLabel)}</td>` +
+        `<td class="mono">${escapeHtml(r.b ?? "")}</td>` +
+        `<td>${escapeHtml(r.d ?? "")}</td>` +
+        `<td class="mono">${escapeHtml(r.e ?? "")}</td>` +
+        `<td>${escapeHtml(r.f ?? "")}</td>` +
+        `<td>${escapeHtml(r.g ?? "")}</td>`;
+      excelTbody.appendChild(tr);
+    }
   }
 
   btnConnect.addEventListener("click", async () => {
@@ -556,6 +598,43 @@
     selectProject(projectSelect.value);
   });
 
+  excelProjectSelect.addEventListener("change", () => {
+    selectProject(excelProjectSelect.value);
+  });
+
+  btnImportExcel.addEventListener("click", () => excelFile.click());
+
+  excelFile.addEventListener("change", async () => {
+    const f = excelFile.files?.[0];
+    if (!f) return;
+    try {
+      const buf = await f.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      }
+      const contentBase64 = btoa(binary);
+
+      const { workspace: ws } = await apiCall("importExcel", {
+        projectId: normId(workspace.currentProjectId),
+        fileName: f.name,
+        contentBase64,
+      });
+      workspace = ws || workspace;
+      renderProjectSelect();
+      renderProjectTree();
+      renderCmdList();
+      projectBadge.textContent = currentProject() ? `· ${currentProject().name}` : "";
+      renderExcelView();
+      appendLog(`[Excel 已导入] ${f.name}`);
+    } catch (e) {
+      alert(`导入失败: ${e.message}`);
+    }
+    excelFile.value = "";
+  });
+
   btnNewProject.addEventListener("click", async () => {
     const title = prompt("新项目名称", `项目_${new Date().toISOString().slice(0, 10)}`);
     if (title === null) return;
@@ -696,6 +775,7 @@
       renderCmdList();
       if (cmds.length) selectCommand(normId(cmds[0].id));
       else clearEditor();
+      renderExcelView();
       updateDispConnectionFields();
       updateStatsUi();
     } catch (e) {

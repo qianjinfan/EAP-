@@ -1,6 +1,7 @@
 using System.Text.Json;
 using EAP模拟器.Models;
 using EAP模拟器.Services;
+using ClosedXML.Excel;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Secs4Net;
@@ -116,6 +117,52 @@ public sealed class WebAppBridge : IAsyncDisposable
                     }
                     break;
 
+                case "importExcel":
+                    {
+                        if (!prm.TryGetProperty("projectId", out var pidEl) || !Guid.TryParse(pidEl.GetString(), out var pid))
+                        {
+                            PostReply(id, false, null, "缺少或无效 projectId");
+                            break;
+                        }
+                        var fileName = prm.TryGetProperty("fileName", out var fnEl) ? (fnEl.GetString() ?? "") : "";
+                        if (!prm.TryGetProperty("contentBase64", out var b64El))
+                        {
+                            PostReply(id, false, null, "缺少 contentBase64");
+                            break;
+                        }
+                        var base64 = b64El.GetString() ?? "";
+                        byte[] bytes;
+                        try
+                        {
+                            bytes = Convert.FromBase64String(base64);
+                        }
+                        catch
+                        {
+                            PostReply(id, false, null, "Excel 内容不是有效的 Base64");
+                            break;
+                        }
+
+                        try
+                        {
+                            var ws = _projects.Load();
+                            var proj = ws.Projects.FirstOrDefault(p => p.Id == pid);
+                            if (proj is null)
+                            {
+                                PostReply(id, false, null, "未找到项目");
+                                break;
+                            }
+
+                            proj.ExcelSheet = ParseFirstSheet(bytes, fileName);
+                            _projects.Save(ws);
+                            PostReply(id, true, new { workspace = ws }, null);
+                        }
+                        catch (Exception ex)
+                        {
+                            PostReply(id, false, null, ex.Message);
+                        }
+                    }
+                    break;
+
                 case "connect":
                     {
                         var ip = prm.GetProperty("ip").GetString() ?? "";
@@ -207,6 +254,67 @@ public sealed class WebAppBridge : IAsyncDisposable
         {
             PostReply(id, false, null, ex.Message);
         }
+    }
+
+    private static ExcelSequenceSheet ParseFirstSheet(byte[] bytes, string fileName)
+    {
+        using var ms = new MemoryStream(bytes);
+        using var wb = new XLWorkbook(ms);
+        var ws = wb.Worksheets.First();
+
+        var sheet = new ExcelSequenceSheet
+        {
+            FileName = string.IsNullOrWhiteSpace(fileName) ? ws.Name : fileName.Trim(),
+            ImportedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+        };
+
+        var range = ws.RangeUsed();
+        if (range is null) return sheet;
+
+        // 根据你的约定：
+        // - B 列：>>> 行表示发送内容（每行一条）
+        // - E 列：<<< 行表示期望接收内容
+        // 这里保留 A/B/D/E/F/G 以及方向箭头，方便后续生成流程。
+        var firstRow = range.FirstRow().RowNumber();
+        var lastRow = range.LastRow().RowNumber();
+
+        for (var r = firstRow; r <= lastRow; r++)
+        {
+            var dir = (ws.Cell(r, 3).GetString() ?? "").Trim(); // C 列
+            var a = (ws.Cell(r, 1).GetString() ?? "").Trim();
+            var b = (ws.Cell(r, 2).GetString() ?? "").Trim();
+            var d = (ws.Cell(r, 4).GetString() ?? "").Trim();
+            var e = (ws.Cell(r, 5).GetString() ?? "").Trim();
+            var f = (ws.Cell(r, 6).GetString() ?? "").Trim();
+            var g = (ws.Cell(r, 7).GetString() ?? "").Trim();
+
+            // 跳过完全空行
+            if (string.IsNullOrWhiteSpace(a) &&
+                string.IsNullOrWhiteSpace(dir) &&
+                string.IsNullOrWhiteSpace(b) &&
+                string.IsNullOrWhiteSpace(d) &&
+                string.IsNullOrWhiteSpace(e) &&
+                string.IsNullOrWhiteSpace(f) &&
+                string.IsNullOrWhiteSpace(g))
+                continue;
+
+            // 只保留 >>> / <<<；其他内容（标题/分隔）方向留空但也可展示
+            if (dir != ">>>" && dir != "<<<") dir = string.Empty;
+
+            sheet.Rows.Add(new ExcelSequenceRow
+            {
+                ExcelRow = r,
+                A = a,
+                Direction = dir,
+                B = b,
+                D = d,
+                E = e,
+                F = f,
+                G = g,
+            });
+        }
+
+        return sheet;
     }
 
     private void PostReply(int id, bool ok, object? result, string? error)

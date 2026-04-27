@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="Secs4Net" Version="2.4.4" />
     <PackageReference Include="Secs4Net.Sml" Version="2.4.4" />
   </ItemGroup>
