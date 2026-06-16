@@ -24,6 +24,7 @@ public sealed class WebAppBridge : IAsyncDisposable
     private readonly WebView2 _web;
     private readonly ProjectStorageService _projects = new();
     private readonly SecsClientService _secs = new();
+    private readonly LogFileService _logFile = new();
     private CoreWebView2? _core;
     private bool _initialized;
 
@@ -40,7 +41,11 @@ public sealed class WebAppBridge : IAsyncDisposable
         _core = _web.CoreWebView2;
         _core.WebMessageReceived += OnWebMessageReceived;
 
-        _secs.LogMessage += line => PostEvent("log", new { line });
+        _secs.LogMessage += line =>
+        {
+            _logFile.Write(line);
+            PostEvent("log", new { line });
+        };
         _secs.ConnectionStateChanged += state =>
         {
             var connected = state == ConnectionState.Selected;
@@ -90,6 +95,28 @@ public sealed class WebAppBridge : IAsyncDisposable
 
             switch (method)
             {
+                case "getLogDir":
+                    PostReply(id, true, new { dir = _logFile.LogDirectory }, null);
+                    break;
+
+                case "openLogDir":
+                    try
+                    {
+                        var dir = _logFile.LogDirectory;
+                        Directory.CreateDirectory(dir);
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = dir,
+                            UseShellExecute = true,
+                        });
+                        PostReply(id, true, new { }, null);
+                    }
+                    catch (Exception ex)
+                    {
+                        PostReply(id, false, null, ex.Message);
+                    }
+                    break;
+
                 case "getWorkspace":
                     {
                         var ws = _projects.Load();
@@ -362,5 +389,6 @@ public sealed class WebAppBridge : IAsyncDisposable
         if (_core is not null)
             _core.WebMessageReceived -= OnWebMessageReceived;
         await _secs.DisposeAsync();
+        _logFile.Dispose();
     }
 }

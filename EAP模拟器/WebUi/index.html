@@ -119,6 +119,11 @@
 
             <article class="panel panel-log span-2">
               <h3 class="panel-title">通信日志</h3>
+              <div class="log-dir-bar">
+                <span class="log-dir-label">日志目录</span>
+                <code id="logDirPath" class="log-dir-path mono" title="日志文件保存位置">—</code>
+                <button type="button" id="btnOpenLogDir" class="btn ghost-sm" title="在资源管理器中打开">打开目录</button>
+              </div>
               <div class="log-filters">
                 <label class="chk sm"><input type="checkbox" id="fltSend" checked /> 发送</label>
                 <label class="chk sm"><input type="checkbox" id="fltRecv" checked /> 接收</label>
@@ -153,6 +158,7 @@
             <h3 class="panel-title">系统设置</h3>
             <p class="hint">主题在右上角切换。工作区保存在程序目录 <code>Data/workspace.json</code>。</p>
             <p class="hint">从旧版本迁移时，会自动读取 <code>Data/commands.json</code> 并合并为「默认项目」。</p>
+            <p class="hint">通信日志按天滚动写入程序目录 <code>Logs/comm-YYYYMMDD.log</code>，可在「通信日志」面板查看目录并一键打开。</p>
           </article>
         </section>
 

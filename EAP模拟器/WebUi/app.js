@@ -85,6 +85,8 @@
   const log = el("log");
   const commTbody = el("commTbody");
   const btnClearLog = el("btnClearLog");
+  const logDirPath = el("logDirPath");
+  const btnOpenLogDir = el("btnOpenLogDir");
   const fltSend = el("fltSend");
   const fltRecv = el("fltRecv");
   const fltErr = el("fltErr");
@@ -198,27 +200,36 @@
     log.textContent += line + "\n";
     log.scrollTop = log.scrollHeight;
 
-    const firstLine = String(line).split("\n")[0];
-    const m = firstLine.match(/^\[(\d{2}:\d{2}:\d{2}\.\d{3})\]\s*(>>|<<)\s*S(\d+)F(\d+)/);
+    const text = String(line);
+    const lines = text.split("\n");
+    const firstLine = lines[0];
+    const body = lines.slice(1).join("\n").trim();
+    const m = firstLine.match(/^\[(\d{2}:\d{2}:\d{2}\.\d{3})\]\s*(>>|<<)\s*S(\d+)F(\d+)\s*(W?)\s*(.*)$/);
     if (m) {
+      const tail = (m[6] || "").trim();
+      const summary = body
+        ? body.split("\n")[0].trim()
+        : tail || `S${m[3]}F${m[4]}${m[5] ? " W" : ""}`;
       commRows.push({
         time: m[1],
         dir: m[2] === ">>" ? "send" : "recv",
-        cmd: `S${m[3]}F${m[4]}`,
-        summary: firstLine.length > 160 ? `${firstLine.slice(0, 160)}…` : firstLine,
+        cmd: `S${m[3]}F${m[4]}${m[5] ? " W" : ""}`,
+        summary: summary.length > 160 ? `${summary.slice(0, 160)}…` : summary,
+        detail: text,
         kind: "msg",
       });
       if (commRows.length > 300) commRows.shift();
       renderCommTable();
       return;
     }
-    if (line.includes("发送失败") || line.includes("[ERROR]") || line.includes("异常")) {
+    if (text.includes("发送失败") || text.includes("[ERROR]") || text.includes("异常")) {
       const tm = firstLine.match(/^\[(\d{2}:\d{2}:\d{2}\.\d{3})\]/);
       commRows.push({
         time: tm ? tm[1] : "",
         dir: "err",
         cmd: "—",
         summary: firstLine.length > 200 ? `${firstLine.slice(0, 200)}…` : firstLine,
+        detail: text,
         kind: "err",
       });
       if (commRows.length > 300) commRows.shift();
@@ -238,8 +249,28 @@
       const tr = document.createElement("tr");
       const dirCls = r.dir === "send" ? "dir-send" : r.dir === "recv" ? "dir-recv" : "dir-err";
       const dirLabel = r.dir === "send" ? "发送" : r.dir === "recv" ? "接收" : "异常";
-      tr.innerHTML = `<td class="mono">${escapeHtml(r.time)}</td><td class="${dirCls}">${dirLabel}</td><td class="mono">${escapeHtml(r.cmd)}</td><td>${escapeHtml(r.summary)}</td>`;
+      const hasDetail = !!(r.detail && r.detail.includes("\n"));
+      tr.className = "comm-row" + (hasDetail ? " has-detail" : "");
+      tr.innerHTML =
+        `<td class="mono">${escapeHtml(r.time)}</td>` +
+        `<td class="${dirCls}">${hasDetail ? '<span class="caret">▸</span> ' : ""}${dirLabel}</td>` +
+        `<td class="mono">${escapeHtml(r.cmd)}</td>` +
+        `<td>${escapeHtml(r.summary)}</td>`;
       commTbody.appendChild(tr);
+
+      if (hasDetail) {
+        const detailTr = document.createElement("tr");
+        detailTr.className = "comm-detail-row";
+        detailTr.style.display = "none";
+        detailTr.innerHTML = `<td colspan="4"><pre class="comm-detail mono">${escapeHtml(r.detail)}</pre></td>`;
+        commTbody.appendChild(detailTr);
+        tr.addEventListener("click", () => {
+          const open = detailTr.style.display === "none";
+          detailTr.style.display = open ? "table-row" : "none";
+          const caret = tr.querySelector(".caret");
+          if (caret) caret.textContent = open ? "▾" : "▸";
+        });
+      }
     }
   }
 
@@ -594,6 +625,28 @@
     renderCommTable();
   });
 
+  async function loadLogDir() {
+    if (!isWebView()) {
+      logDirPath.textContent = "（仅在桌面应用中可用）";
+      return;
+    }
+    try {
+      const { dir } = await apiCall("getLogDir");
+      logDirPath.textContent = dir || "—";
+      logDirPath.title = dir || "";
+    } catch {
+      logDirPath.textContent = "—";
+    }
+  }
+
+  btnOpenLogDir.addEventListener("click", async () => {
+    try {
+      await apiCall("openLogDir");
+    } catch (e) {
+      appendLog(`打开日志目录失败: ${e.message}`);
+    }
+  });
+
   projectSelect.addEventListener("change", () => {
     selectProject(projectSelect.value);
   });
@@ -753,6 +806,7 @@
     if (!isWebView()) {
       appendLog("提示: 在 WebView2 宿主中运行以使用完整功能。");
     }
+    void loadLogDir();
     try {
       const { workspace: ws } = await apiCall("getWorkspace");
       workspace = ws || { projects: [], currentProjectId: "" };

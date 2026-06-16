@@ -571,6 +571,37 @@ input.grow,
   flex-wrap: wrap;
 }
 
+.log-dir-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+}
+
+.log-dir-label {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.log-dir-path {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.72rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.log-dir-bar .btn { flex-shrink: 0; }
+
 .log-filters {
   display: flex;
   align-items: center;
@@ -612,6 +643,28 @@ input.grow,
 .dir-send { color: var(--accent); font-weight: 600; }
 .dir-recv { color: var(--accent-2); font-weight: 600; }
 .dir-err { color: var(--danger); font-weight: 600; }
+
+.comm-row.has-detail { cursor: pointer; }
+.comm-row.has-detail:hover { background: var(--accent-tint); }
+
+.comm-table .caret {
+  display: inline-block;
+  width: 0.9em;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.comm-detail-row td { padding: 0; background: var(--log-bg); }
+
+.comm-detail {
+  margin: 0;
+  padding: 8px 10px 8px 28px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--log-fg);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 
 .log-raw {
   margin: 0;
