@@ -145,6 +145,18 @@
               <pre class="parse-pre" id="parsePre">（在右侧列表选择一条命令）</pre>
             </article>
 
+            <article class="panel panel-autoreply">
+              <h3 class="panel-title">命令处理 <span class="title-tag">自动应答</span></h3>
+              <p class="hint">设备主动发来需要回复的命令时，按下表规则自动应答。例如收到 <code>S2F17</code> 时间请求，自动回复 <code>S2F18</code> 并带上本机当前时间。</p>
+              <label class="chk sm autoreply-toggle"><input type="checkbox" id="autoReplyEnabled" checked /> 启用自动应答</label>
+              <div class="table-wrap">
+                <table class="comm-table" id="autoReplyTable">
+                  <thead><tr><th>名称</th><th>收到</th><th>回复</th><th>说明</th></tr></thead>
+                  <tbody id="autoReplyTbody"></tbody>
+                </table>
+              </div>
+            </article>
+
             <article class="panel panel-tree">
               <h3 class="panel-title">项目结构</h3>
               <p class="hint">切换项目后，常用命令列表会切换为该项目下的指令集。</p>

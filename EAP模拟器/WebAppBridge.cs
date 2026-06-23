@@ -221,6 +221,25 @@ public sealed class WebAppBridge : IAsyncDisposable
                     PostReply(id, true, new { }, null);
                     break;
 
+                case "getAutoReplyRules":
+                    PostReply(id, true, new
+                    {
+                        enabled = _secs.AutoReplyEnabled,
+                        rules = CommandResponder.Rules.Select(r => new
+                        {
+                            name = r.Name,
+                            primary = $"S{r.PrimaryStream}F{r.PrimaryFunction}",
+                            reply = $"S{r.ReplyStream}F{r.ReplyFunction}",
+                            description = r.Description,
+                        }),
+                    }, null);
+                    break;
+
+                case "setAutoReply":
+                    _secs.AutoReplyEnabled = !prm.TryGetProperty("enabled", out var enEl) || enEl.GetBoolean();
+                    PostReply(id, true, new { enabled = _secs.AutoReplyEnabled }, null);
+                    break;
+
                 case "send":
                     {
                         if (!_secs.IsConnected)

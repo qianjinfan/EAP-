@@ -23,12 +23,16 @@ internal sealed class SecsLogger(Action<string> log) : ISecsGemLogger
 /// </summary>
 public sealed class SecsClientService : IAsyncDisposable
 {
+    private readonly CommandResponder _responder = new();
     private HsmsConnection? _connection;
     private SecsGem? _secsGem;
     private CancellationTokenSource? _cts;
 
     /// <summary>是否已连接</summary>
     public bool IsConnected => _connection?.State == ConnectionState.Selected;
+
+    /// <summary>是否自动应答收到的 Primary 消息（如 S2F17 -&gt; S2F18）。</summary>
+    public bool AutoReplyEnabled { get; set; } = true;
 
     /// <summary>收到日志消息时触发</summary>
     public event Action<string>? LogMessage;
@@ -80,12 +84,12 @@ public sealed class SecsClientService : IAsyncDisposable
                         Log($"<< S{e.PrimaryMessage.S}F{e.PrimaryMessage.F} {(e.PrimaryMessage.ReplyExpected ? "W" : "")}\n{FormatMessage(e.PrimaryMessage)}");
                         PrimaryMessageReceived?.Invoke(e.PrimaryMessage);
 
-                        // 自动回复：对需要回复的消息返回空回复
-                        if (e.PrimaryMessage.ReplyExpected)
+                        // 自动应答：根据收到的命令生成对应回复（如 S2F17 -> S2F18 带本机时间）
+                        if (e.PrimaryMessage.ReplyExpected && AutoReplyEnabled)
                         {
-                            var reply = new SecsMessage(e.PrimaryMessage.S, (byte)(e.PrimaryMessage.F + 1));
+                            var (reply, note) = _responder.CreateReply(e.PrimaryMessage);
                             await e.TryReplyAsync(reply);
-                            Log($">> S{reply.S}F{reply.F} (自动回复)");
+                            Log($">> S{reply.S}F{reply.F} (自动回复: {note})\n{FormatMessage(reply)}");
                         }
                     }
                     catch (Exception ex)

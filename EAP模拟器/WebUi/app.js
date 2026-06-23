@@ -102,6 +102,8 @@
   const btnImportExcel = el("btnImportExcel");
   const excelMeta = el("excelMeta");
   const excelTbody = el("excelTbody");
+  const autoReplyEnabled = el("autoReplyEnabled");
+  const autoReplyTbody = el("autoReplyTbody");
 
   /** @type {{ projects: any[], currentProjectId: string }} */
   let workspace = { projects: [], currentProjectId: "" };
@@ -802,11 +804,48 @@
   ip.addEventListener("input", updateDispConnectionFields);
   port.addEventListener("input", updateDispConnectionFields);
 
+  function renderAutoReplyRules(rules) {
+    autoReplyTbody.innerHTML = "";
+    (rules || []).forEach((r) => {
+      const tr = document.createElement("tr");
+      const cells = [r.name, r.primary, r.reply, r.description];
+      cells.forEach((text, i) => {
+        const td = document.createElement("td");
+        td.textContent = text ?? "";
+        if (i === 1 || i === 2) td.className = "mono";
+        tr.appendChild(td);
+      });
+      autoReplyTbody.appendChild(tr);
+    });
+  }
+
+  async function loadAutoReplyRules() {
+    if (!isWebView()) return;
+    try {
+      const res = await apiCall("getAutoReplyRules");
+      autoReplyEnabled.checked = res.enabled !== false;
+      renderAutoReplyRules(res.rules);
+    } catch (e) {
+      appendLog(`加载自动应答规则失败: ${e.message}`);
+    }
+  }
+
+  autoReplyEnabled.addEventListener("change", async () => {
+    if (!isWebView()) return;
+    try {
+      await apiCall("setAutoReply", { enabled: autoReplyEnabled.checked });
+      appendLog(`[自动应答] ${autoReplyEnabled.checked ? "已启用" : "已停用"}`);
+    } catch (e) {
+      appendLog(`设置自动应答失败: ${e.message}`);
+    }
+  });
+
   async function boot() {
     if (!isWebView()) {
       appendLog("提示: 在 WebView2 宿主中运行以使用完整功能。");
     }
     void loadLogDir();
+    void loadAutoReplyRules();
     try {
       const { workspace: ws } = await apiCall("getWorkspace");
       workspace = ws || { projects: [], currentProjectId: "" };
