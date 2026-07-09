@@ -294,15 +294,19 @@
   function renderProjectSelect() {
     projectSelect.innerHTML = "";
     excelProjectSelect.innerHTML = "";
+    const mesSel = document.getElementById("mesProjectSelect");
+    if (mesSel) mesSel.innerHTML = "";
     workspace.projects.forEach((p) => {
       const o = document.createElement("option");
       o.value = normId(p.id);
       o.textContent = p.name || "未命名";
       projectSelect.appendChild(o);
       excelProjectSelect.appendChild(o.cloneNode(true));
+      if (mesSel) mesSel.appendChild(o.cloneNode(true));
     });
     projectSelect.value = normId(workspace.currentProjectId);
     excelProjectSelect.value = normId(workspace.currentProjectId);
+    if (mesSel) mesSel.value = normId(workspace.currentProjectId);
   }
 
   function renderProjectTree() {
@@ -440,12 +444,15 @@
     const p = currentProject();
     projectBadge.textContent = p ? `· ${p.name}` : "";
     renderExcelView();
+    renderMesSavedList();
   }
 
   function selectProject(projectId) {
     workspace.currentProjectId = normId(projectId);
     projectSelect.value = workspace.currentProjectId;
     excelProjectSelect.value = workspace.currentProjectId;
+    const mesSel = document.getElementById("mesProjectSelect");
+    if (mesSel) mesSel.value = workspace.currentProjectId;
     selectedId = null;
     const cmds = currentCommands();
     renderProjectTree();
@@ -455,6 +462,8 @@
     else clearEditor();
     void persistWorkspace();
     renderExcelView();
+    mesSelectedIfaceId = null;
+    renderMesSavedList();
   }
 
   function renderExcelView() {
@@ -840,12 +849,418 @@
     }
   });
 
+  // ---------------- MES 接口测试 ----------------
+  const mesMethod = el("mesMethod");
+  const mesUrl = el("mesUrl");
+  const mesTimeout = el("mesTimeout");
+  const mesType = el("mesType");
+  const mesSoapFields = el("mesSoapFields");
+  const mesSoapMethod = el("mesSoapMethod");
+  const mesSoapNs = el("mesSoapNs");
+  const mesParams = el("mesParams");
+  const btnMesAddParam = el("btnMesAddParam");
+  const mesParamHint = el("mesParamHint");
+  const mesHeaders = el("mesHeaders");
+  const mesBody = el("mesBody");
+  const mesBodyLabel = el("mesBodyLabel");
+  const btnMesPreview = el("btnMesPreview");
+  const btnMesSend = el("btnMesSend");
+  const mesStatus = el("mesStatus");
+  const mesElapsed = el("mesElapsed");
+  const mesParsed = el("mesParsed");
+  const mesResp = el("mesResp");
+  const mesProjectSelect = el("mesProjectSelect");
+  const mesIfaceName = el("mesIfaceName");
+  const mesSavedList = el("mesSavedList");
+  const btnMesSaveIface = el("btnMesSaveIface");
+  const btnMesNewIface = el("btnMesNewIface");
+  const btnMesDelIface = el("btnMesDelIface");
+
+  const SOAP_NS_DEFAULT = "http://tempuri.org/";
+  let mesSelectedIfaceId = null;
+
+  function addMesParamRow(key = "", value = "") {
+    if (!mesParams) return;
+    const row = document.createElement("div");
+    row.className = "mes-kv-row";
+    row.innerHTML =
+      `<input type="text" class="inp-tiny mes-kv-key" placeholder="参数名" />` +
+      `<input type="text" class="inp-tiny grow mes-kv-val" placeholder="参数值" />` +
+      `<button type="button" class="btn icon danger mes-kv-del" title="删除">✕</button>`;
+    row.querySelector(".mes-kv-key").value = key;
+    row.querySelector(".mes-kv-val").value = value;
+    row.querySelector(".mes-kv-del").addEventListener("click", () => row.remove());
+    mesParams.appendChild(row);
+  }
+
+  function collectMesParams() {
+    if (!mesParams) return [];
+    return [...mesParams.querySelectorAll(".mes-kv-row")]
+      .map((r) => ({
+        key: r.querySelector(".mes-kv-key").value.trim(),
+        value: r.querySelector(".mes-kv-val").value,
+      }))
+      .filter((p) => p.key);
+  }
+
+  function parseHeaderLines(text) {
+    return String(text || "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const i = l.indexOf(":");
+        if (i < 0) return { key: l, value: "" };
+        return { key: l.slice(0, i).trim(), value: l.slice(i + 1).trim() };
+      })
+      .filter((h) => h.key);
+  }
+
+  function xmlEscape(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function buildSoapEnvelope(methodName, ns, params) {
+    const inner = params
+      .map((p) => `      <${p.key}>${xmlEscape(p.value)}</${p.key}>`)
+      .join("\n");
+    const bodyInner = inner ? `\n${inner}\n    ` : "";
+    return `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soap:Body>
+    <${methodName} xmlns="${ns}">${bodyInner}</${methodName}>
+  </soap:Body>
+</soap:Envelope>`;
+  }
+
+  // 用 {参数名} 占位替换手写请求体
+  function substituteParams(body, params) {
+    let out = String(body || "");
+    for (const p of params) {
+      out = out.replace(new RegExp(`\\{${p.key}\\}`, "g"), p.value);
+    }
+    return out;
+  }
+
+  function findHeader(headers, key) {
+    return headers.find((h) => h.key.toLowerCase() === key.toLowerCase())?.value;
+  }
+
+  // 返回 { body, headers, contentType, resultTag, parseMode, queryParams }
+  function buildMesRequest() {
+    const params = collectMesParams();
+    const headers = parseHeaderLines(mesHeaders.value);
+    const isGet = mesMethod.value === "GET";
+    const type = mesType.value;
+
+    // SOAP：仅 POST 时自动拼信封；GET 时退化为普通 HTTP
+    if (type === "soap" && !isGet) {
+      const methodName = (mesSoapMethod.value || "").trim();
+      if (!methodName) throw new Error("请填写 SOAP 接口名");
+      const ns = (mesSoapNs.value || "").trim() || SOAP_NS_DEFAULT;
+      const body = buildSoapEnvelope(methodName, ns, params);
+      if (!headers.some((h) => h.key.toLowerCase() === "soapaction")) {
+        headers.push({ key: "SOAPAction", value: ns.replace(/\/$/, "/") + methodName });
+      }
+      const contentType = findHeader(headers, "Content-Type") || "text/xml; charset=utf-8";
+      return { body, headers, contentType, resultTag: `${methodName}Result`, parseMode: "soap", queryParams: [] };
+    }
+
+    // REST(JSON)：POST 时参数自动转 JSON（无参数则用手写请求体），返回按 JSON 解析
+    if (type === "rest") {
+      if (!headers.some((h) => h.key.toLowerCase() === "content-type")) {
+        headers.push({ key: "Content-Type", value: "application/json" });
+      }
+      const contentType = findHeader(headers, "Content-Type") || "application/json";
+      let body = "";
+      if (!isGet) {
+        body = params.length
+          ? JSON.stringify(Object.fromEntries(params.map((p) => [p.key, p.value])), null, 2)
+          : substituteParams(mesBody.value, params);
+      }
+      return { body, headers, contentType, resultTag: "", parseMode: "json", queryParams: isGet ? params : [] };
+    }
+
+    // 普通 HTTP / 表单：GET 拼 query，POST 走表单编码（无参数则用手写请求体），不解析
+    const contentType = findHeader(headers, "Content-Type") || "application/x-www-form-urlencoded";
+    let body = "";
+    if (!isGet) {
+      body = params.length
+        ? params.map((p) => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join("&")
+        : substituteParams(mesBody.value, params);
+    }
+    return { body, headers, contentType, resultTag: "", parseMode: "none", queryParams: isGet ? params : [] };
+  }
+
+  function updateMesModeUi() {
+    const type = mesType.value;
+    const isGet = mesMethod.value === "GET";
+    const soapActive = type === "soap" && !isGet;
+    // 自动转换请求体（SOAP 拼信封 / REST 参数转 JSON / 表单编码）时禁用手写框
+    const autoBody = soapActive || (type !== "http" && !isGet && collectMesParams().length > 0);
+
+    if (mesSoapFields) mesSoapFields.style.display = soapActive ? "flex" : "none";
+    if (mesBodyLabel) mesBodyLabel.style.opacity = autoBody ? "0.5" : "1";
+    if (mesBody) mesBody.disabled = autoBody;
+
+    if (mesParamHint) {
+      if (isGet) mesParamHint.textContent = "GET：作为查询字符串拼接到 URL";
+      else if (type === "soap") mesParamHint.textContent = "SOAP：作为方法入参";
+      else if (type === "rest") mesParamHint.textContent = "REST：自动序列化为 JSON（留空则用手写请求体）";
+      else mesParamHint.textContent = "普通 HTTP：POST 时按表单 key=value 编码";
+    }
+  }
+
+  function setMesStatus(state, text) {
+    if (!mesStatus) return;
+    mesStatus.dataset.state = state;
+    mesStatus.textContent = text;
+  }
+
+  btnMesAddParam?.addEventListener("click", () => {
+    addMesParamRow();
+    updateMesModeUi();
+  });
+  mesType?.addEventListener("change", updateMesModeUi);
+  mesMethod?.addEventListener("change", updateMesModeUi);
+  // 参数增删会影响 REST/表单是否自动生成请求体
+  mesParams?.addEventListener("input", updateMesModeUi);
+  mesParams?.addEventListener("click", (e) => {
+    if (e.target.classList?.contains("mes-kv-del")) setTimeout(updateMesModeUi, 0);
+  });
+
+  btnMesPreview?.addEventListener("click", () => {
+    try {
+      const req = buildMesRequest();
+      const headerText = req.headers.map((h) => `${h.key}: ${h.value}`).join("\n");
+      const qText = req.queryParams?.length ? `\n[Query] ${req.queryParams.map((p) => `${p.key}=${p.value}`).join("&")}` : "";
+      mesResp.textContent = `[${mesMethod.value}] ${mesUrl.value.trim()}${qText}\n\n[Headers]\n${headerText}\n\n[Body]\n${req.body || "(无)"}`;
+      mesParsed.textContent = "—";
+      setMesStatus("warn", "预览（未发送）");
+    } catch (e) {
+      alert(e.message);
+    }
+  });
+
+  btnMesSend?.addEventListener("click", async () => {
+    const url = mesUrl.value.trim();
+    if (!url) {
+      alert("请填写 URL");
+      return;
+    }
+    let req;
+    try {
+      req = buildMesRequest();
+    } catch (e) {
+      alert(e.message);
+      return;
+    }
+    btnMesSend.disabled = true;
+    setMesStatus("warn", "请求中…");
+    mesElapsed.textContent = "";
+    mesParsed.textContent = "—";
+    mesResp.textContent = "请求中…";
+    try {
+      const r = await apiCall("mesRequest", {
+        httpMethod: mesMethod.value,
+        url,
+        headers: req.headers,
+        queryParams: req.queryParams,
+        body: req.body,
+        contentType: req.contentType,
+        timeoutSec: Number(mesTimeout.value) || 10,
+        resultTag: req.resultTag,
+        parseMode: req.parseMode,
+      });
+      setMesStatus(r.ok ? "on" : "warn", `HTTP ${r.status}`);
+      mesElapsed.textContent = r.elapsedMs != null ? `${r.elapsedMs} ms` : "";
+      mesResp.textContent = r.body || "(空响应)";
+      if (req.parseMode === "none") mesParsed.textContent = "（普通 HTTP：不解析，见下方原文）";
+      else if (r.parsed != null && r.parsed !== "") mesParsed.textContent = r.parsed;
+      else if (r.parseError) mesParsed.textContent = `（无法解析：${r.parseError}）`;
+      else mesParsed.textContent = req.parseMode === "json" ? "（未找到 resultData/result 字段）" : "（未找到 Result 节点）";
+      appendLog(`[MES] ${mesMethod.value} ${url} -> HTTP ${r.status}`);
+    } catch (e) {
+      setMesStatus("off", "请求失败");
+      mesResp.textContent = `请求失败: ${e.message}`;
+      appendLog(`[MES] 请求失败: ${e.message}`);
+    } finally {
+      btnMesSend.disabled = false;
+    }
+  });
+
+  // ---- 已保存接口（按项目） ----
+  function currentMesInterfaces() {
+    const p = currentProject();
+    if (!p) return [];
+    if (!Array.isArray(p.mesInterfaces)) p.mesInterfaces = [];
+    return p.mesInterfaces;
+  }
+
+  function clearMesParams() {
+    if (mesParams) mesParams.innerHTML = "";
+  }
+
+  function ifaceTypeLabel(t) {
+    return t === "rest" ? "REST" : t === "http" ? "HTTP" : "SOAP";
+  }
+
+  function updateMesIfaceButtons() {
+    const has = !!mesSelectedIfaceId && currentMesInterfaces().some((f) => normId(f.id) === normId(mesSelectedIfaceId));
+    if (btnMesDelIface) btnMesDelIface.disabled = !has;
+  }
+
+  function renderMesSavedList() {
+    if (!mesSavedList) return;
+    mesSavedList.innerHTML = "";
+    const list = currentMesInterfaces();
+    if (list.length === 0) {
+      const li = document.createElement("li");
+      li.className = "mes-saved-empty";
+      li.textContent = "该项目暂无已保存接口";
+      mesSavedList.appendChild(li);
+      updateMesIfaceButtons();
+      return;
+    }
+    list.forEach((f) => {
+      const id = normId(f.id);
+      const li = document.createElement("li");
+      li.dataset.id = id;
+      if (id === normId(mesSelectedIfaceId)) li.classList.add("active");
+      li.innerHTML =
+        `<div class="cmd-name">${escapeHtml(f.name || "未命名接口")}</div>` +
+        `<div class="cmd-sub">${escapeHtml(`${f.httpMethod || "POST"} ${f.url || ""}`)}</div>` +
+        `<span class="cmd-tag">${escapeHtml(ifaceTypeLabel(f.type))}</span>`;
+      li.addEventListener("click", () => selectMesInterface(id));
+      mesSavedList.appendChild(li);
+    });
+    updateMesIfaceButtons();
+  }
+
+  function loadInterfaceToForm(f) {
+    mesType.value = f.type || "soap";
+    mesMethod.value = f.httpMethod || "POST";
+    mesUrl.value = f.url || "";
+    mesTimeout.value = f.timeoutSec || 10;
+    mesSoapMethod.value = f.soapMethod || "";
+    mesSoapNs.value = f.soapNamespace || "";
+    mesHeaders.value = f.headers || "";
+    mesBody.value = f.body || "";
+    mesIfaceName.value = f.name || "";
+    clearMesParams();
+    (f.params || []).forEach((p) => addMesParamRow(p.key, p.value));
+    if ((f.params || []).length === 0) addMesParamRow();
+    updateMesModeUi();
+  }
+
+  function selectMesInterface(id) {
+    const f = currentMesInterfaces().find((x) => normId(x.id) === normId(id));
+    if (!f) return;
+    mesSelectedIfaceId = id;
+    loadInterfaceToForm(f);
+    renderMesSavedList();
+  }
+
+  function readFormAsInterface() {
+    return {
+      type: mesType.value,
+      httpMethod: mesMethod.value,
+      url: mesUrl.value.trim(),
+      timeoutSec: Number(mesTimeout.value) || 10,
+      soapMethod: mesSoapMethod.value.trim(),
+      soapNamespace: mesSoapNs.value.trim(),
+      params: collectMesParams(),
+      headers: mesHeaders.value,
+      body: mesBody.value,
+    };
+  }
+
+  function newMesInterface() {
+    mesSelectedIfaceId = null;
+    mesIfaceName.value = "";
+    mesType.value = "soap";
+    mesMethod.value = "POST";
+    mesUrl.value = "";
+    mesTimeout.value = 10;
+    mesSoapMethod.value = "";
+    mesSoapNs.value = "";
+    mesHeaders.value = "";
+    mesBody.value = "";
+    clearMesParams();
+    addMesParamRow("waferid", "");
+    updateMesModeUi();
+    renderMesSavedList();
+  }
+
+  btnMesSaveIface?.addEventListener("click", async () => {
+    const nm = mesIfaceName.value.trim();
+    if (!nm) {
+      alert("请填写接口名称");
+      return;
+    }
+    const list = currentMesInterfaces();
+    const data = readFormAsInterface();
+    let target = list.find((x) => normId(x.id) === normId(mesSelectedIfaceId));
+    let created = false;
+    if (target) {
+      Object.assign(target, data, { name: nm });
+    } else {
+      target = { id: crypto.randomUUID(), name: nm, ...data };
+      list.push(target);
+      created = true;
+    }
+    try {
+      await persistWorkspace();
+      mesSelectedIfaceId = target.id;
+      renderMesSavedList();
+      appendLog(`[MES] 接口已${created ? "保存" : "更新"}: ${nm}`);
+    } catch (e) {
+      if (created) list.pop();
+      alert(`保存失败: ${e.message}`);
+    }
+  });
+
+  btnMesNewIface?.addEventListener("click", newMesInterface);
+
+  btnMesDelIface?.addEventListener("click", async () => {
+    const list = currentMesInterfaces();
+    const idx = list.findIndex((x) => normId(x.id) === normId(mesSelectedIfaceId));
+    if (idx < 0) return;
+    const f = list[idx];
+    if (!confirm(`删除接口「${f.name || "未命名"}」？`)) return;
+    const [removed] = list.splice(idx, 1);
+    mesSelectedIfaceId = null;
+    try {
+      await persistWorkspace();
+      renderMesSavedList();
+      appendLog(`[MES] 接口已删除: ${f.name || "未命名"}`);
+    } catch (e) {
+      list.splice(idx, 0, removed);
+      alert(`删除失败: ${e.message}`);
+    }
+  });
+
+  mesProjectSelect?.addEventListener("change", () => {
+    selectProject(mesProjectSelect.value);
+  });
+
+  function mesInit() {
+    if (!mesParams) return;
+    if (mesParams.children.length === 0) addMesParamRow("waferid", "");
+    updateMesModeUi();
+    renderMesSavedList();
+  }
+
   async function boot() {
     if (!isWebView()) {
       appendLog("提示: 在 WebView2 宿主中运行以使用完整功能。");
     }
     void loadLogDir();
     void loadAutoReplyRules();
+    mesInit();
     try {
       const { workspace: ws } = await apiCall("getWorkspace");
       workspace = ws || { projects: [], currentProjectId: "" };
@@ -869,6 +1284,7 @@
       if (cmds.length) selectCommand(normId(cmds[0].id));
       else clearEditor();
       renderExcelView();
+      renderMesSavedList();
       updateDispConnectionFields();
       updateStatsUi();
     } catch (e) {

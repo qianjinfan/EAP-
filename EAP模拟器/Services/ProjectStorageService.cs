@@ -100,6 +100,10 @@ public sealed class ProjectStorageService
             {
                 if (c.Id == Guid.Empty) c.Id = Guid.NewGuid();
             }
+            foreach (var m in p.MesInterfaces)
+            {
+                if (m.Id == Guid.Empty) m.Id = Guid.NewGuid();
+            }
         }
     }
 

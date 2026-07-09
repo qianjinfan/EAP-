@@ -18,6 +18,7 @@
         <button type="button" class="nav-item" data-view="dashboard">日志查看</button>
         <button type="button" class="nav-item" data-view="dashboard">项目管理</button>
         <button type="button" class="nav-item" data-view="excel">时序表</button>
+        <button type="button" class="nav-item" data-view="mes">MES 接口测试</button>
         <button type="button" class="nav-item" data-view="settings">系统设置</button>
       </nav>
       <div class="nav-footer">
@@ -204,6 +205,77 @@
               </table>
             </div>
           </article>
+        </section>
+        <section id="view-mes" class="view">
+          <div class="mes-grid">
+            <article class="panel mes-req">
+              <h3 class="panel-title">MES 接口测试 <span class="title-tag">HTTP / SOAP</span></h3>
+              <p class="hint">按接口类型区分：<strong>SOAP</strong> 按「接口名+参数」自动生成信封与 <code>SOAPAction</code>，返回取 <code>xxxResult</code> 节点；<strong>REST</strong> 参数自动转 JSON，返回按 JSON 取 <code>resultData</code>；<strong>普通 HTTP</strong> GET 拼 query、POST 走表单，仅显示原文。</p>
+
+              <div class="mes-saved-bar">
+                <label class="field-label">项目</label>
+                <select id="mesProjectSelect" class="select-project"></select>
+                <input type="text" id="mesIfaceName" class="grow" placeholder="接口名称（用于保存）" />
+                <button type="button" id="btnMesSaveIface" class="btn primary sm" title="保存当前配置为接口（已选中则更新）">保存接口</button>
+                <button type="button" id="btnMesNewIface" class="btn secondary sm" title="清空表单，新建接口">新建</button>
+                <button type="button" id="btnMesDelIface" class="btn sm danger-outline" title="删除选中的接口">删除</button>
+              </div>
+              <ul class="cmd-cards mes-saved-list" id="mesSavedList"></ul>
+
+              <div class="field-row tight">
+                <label for="mesMethod">方式</label>
+                <select id="mesMethod" class="mes-method">
+                  <option value="POST">POST</option>
+                  <option value="GET">GET</option>
+                </select>
+                <input type="text" id="mesUrl" class="grow" placeholder="http://172.24.10.93:8081/MESWebService.asmx" />
+                <label class="chk sm" title="超时后中断请求"><span>超时(秒)</span>
+                  <input type="number" id="mesTimeout" min="1" max="120" value="10" class="input-num" />
+                </label>
+              </div>
+
+              <div class="field-row tight mes-soap-bar">
+                <label for="mesType">类型</label>
+                <select id="mesType" class="mes-method">
+                  <option value="soap">WebService (SOAP)</option>
+                  <option value="rest">REST (JSON)</option>
+                  <option value="http">普通 HTTP / 表单</option>
+                </select>
+                <div id="mesSoapFields" class="mes-soap-fields">
+                  <input type="text" id="mesSoapMethod" class="grow" placeholder="接口名，如 TestMachineCallProCP3" />
+                  <input type="text" id="mesSoapNs" class="grow" placeholder="命名空间（默认 http://tempuri.org/）" />
+                </div>
+              </div>
+
+              <label class="block-label">参数（<span id="mesParamHint">SOAP 助手：作为方法入参</span>）</label>
+              <div class="mes-kv" id="mesParams"></div>
+              <button type="button" id="btnMesAddParam" class="btn ghost-sm">＋ 添加参数</button>
+
+              <label class="block-label">请求头（每行 <code>Key: Value</code>）</label>
+              <textarea id="mesHeaders" class="code mes-short" spellcheck="false" placeholder="SOAPAction: http://tempuri.org/TestMachineCallProCP3&#10;Content-Type: text/xml; charset=utf-8"></textarea>
+
+              <label class="block-label" id="mesBodyLabel">请求体（手写 SOAP / JSON，可用 <code>{参数名}</code> 占位）</label>
+              <textarea id="mesBody" class="code" spellcheck="false"></textarea>
+
+              <div class="send-toolbar">
+                <button type="button" id="btnMesPreview" class="btn sm" title="预览最终发送的请求体">预览</button>
+                <span class="grow"></span>
+                <button type="button" id="btnMesSend" class="btn primary sm">发送请求</button>
+              </div>
+            </article>
+
+            <article class="panel mes-resp">
+              <h3 class="panel-title">响应</h3>
+              <div class="mes-status-row">
+                <span id="mesStatus" class="pill" data-state="off">尚未请求</span>
+                <span id="mesElapsed" class="rate-text"></span>
+              </div>
+              <label class="block-label">解析结果（Result 节点 / resultData）</label>
+              <pre class="parse-pre mes-parsed" id="mesParsed">—</pre>
+              <label class="block-label">返回原文</label>
+              <pre class="parse-pre mes-raw" id="mesResp">（尚未请求）</pre>
+            </article>
+          </div>
         </section>
       </main>
     </div>

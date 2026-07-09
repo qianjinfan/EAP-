@@ -736,6 +736,114 @@ input.grow,
 
 .settings-card { max-width: 560px; }
 
+/* MES 接口测试 */
+.mes-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(360px, 1.1fr) minmax(300px, 1fr);
+  gap: 12px;
+  align-content: stretch;
+}
+
+@media (max-width: 1000px) {
+  .mes-grid { grid-template-columns: 1fr; }
+}
+
+.mes-req, .mes-resp {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.mes-method {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text);
+  font: inherit;
+}
+
+.mes-saved-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.mes-saved-list {
+  max-height: 150px;
+  margin-bottom: 10px;
+}
+
+.mes-saved-empty {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-align: center;
+  background: transparent !important;
+  border: 1px dashed var(--border) !important;
+  cursor: default !important;
+}
+
+.mes-soap-bar { align-items: flex-start; }
+
+.mes-soap-fields {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.mes-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.mes-kv-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.mes-kv-key { width: 160px; min-width: 120px; }
+
+.mes-kv-del {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.code.mes-short { min-height: 60px; max-height: 120px; }
+
+.mes-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.mes-parsed {
+  min-height: 48px;
+  max-height: 120px;
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.mes-raw {
+  flex: 1;
+  min-height: 160px;
+  max-height: none;
+}
+
 .excel-card { min-height: 0; display: flex; flex-direction: column; }
 
 .excel-head {

@@ -1,4 +1,7 @@
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 using EAP模拟器.Models;
 using EAP模拟器.Services;
 using ClosedXML.Excel;
@@ -291,6 +294,10 @@ public sealed class WebAppBridge : IAsyncDisposable
                     }
                     break;
 
+                case "mesRequest":
+                    await HandleMesRequestAsync(id, prm).ConfigureAwait(true);
+                    break;
+
                 default:
                     PostReply(id, false, null, $"未知方法: {method}");
                     break;
@@ -300,6 +307,185 @@ public sealed class WebAppBridge : IAsyncDisposable
         {
             PostReply(id, false, null, ex.Message);
         }
+    }
+
+    /// <summary>共享 HttpClient，避免频繁创建导致的 socket 耗尽；超时通过 CancellationToken 单独控制。</summary>
+    private static readonly HttpClient MesHttp = new(new HttpClientHandler
+    {
+        // MES 测试环境常用自签名证书，这里放宽校验，仅用于内网调试工具。
+        ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+    });
+
+    /// <summary>
+    /// 通用 HTTP/SOAP 接口测试：支持 GET/POST、自定义请求头、查询参数、请求体，并可解析 SOAP 返回值。
+    /// </summary>
+    private async Task HandleMesRequestAsync(int id, JsonElement prm)
+    {
+        var httpMethod = (prm.TryGetProperty("httpMethod", out var mEl) ? mEl.GetString() : "POST") ?? "POST";
+        var url = prm.TryGetProperty("url", out var uEl) ? (uEl.GetString() ?? "").Trim() : "";
+        var body = prm.TryGetProperty("body", out var bEl) ? (bEl.GetString() ?? "") : "";
+        var contentType = prm.TryGetProperty("contentType", out var ctEl) ? (ctEl.GetString() ?? "text/xml") : "text/xml";
+        if (string.IsNullOrWhiteSpace(contentType)) contentType = "text/xml";
+        var timeoutSec = prm.TryGetProperty("timeoutSec", out var tEl) && tEl.TryGetInt32(out var ts) && ts > 0 ? ts : 10;
+        var resultTag = prm.TryGetProperty("resultTag", out var rtEl) ? (rtEl.GetString() ?? "").Trim() : "";
+        var parseMode = prm.TryGetProperty("parseMode", out var pmEl) ? (pmEl.GetString() ?? "soap").Trim() : "soap";
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            PostReply(id, false, null, "URL 不能为空");
+            return;
+        }
+
+        var isGet = httpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase);
+
+        // 查询参数：GET 时拼接到 URL
+        if (prm.TryGetProperty("queryParams", out var qEl) && qEl.ValueKind == JsonValueKind.Array)
+        {
+            var parts = new List<string>();
+            foreach (var q in qEl.EnumerateArray())
+            {
+                var k = q.TryGetProperty("key", out var kk) ? (kk.GetString() ?? "").Trim() : "";
+                if (string.IsNullOrEmpty(k)) continue;
+                var v = q.TryGetProperty("value", out var vv) ? (vv.GetString() ?? "") : "";
+                parts.Add($"{Uri.EscapeDataString(k)}={Uri.EscapeDataString(v)}");
+            }
+            if (parts.Count > 0)
+                url += (url.Contains('?') ? "&" : "?") + string.Join("&", parts);
+        }
+
+        using var request = new HttpRequestMessage(isGet ? HttpMethod.Get : HttpMethod.Post, url);
+
+        if (prm.TryGetProperty("headers", out var hEl) && hEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var h in hEl.EnumerateArray())
+            {
+                var k = h.TryGetProperty("key", out var kk) ? (kk.GetString() ?? "").Trim() : "";
+                if (string.IsNullOrEmpty(k)) continue;
+                var v = h.TryGetProperty("value", out var vv) ? (vv.GetString() ?? "") : "";
+                // Content-Type 交给 StringContent 设置，避免与实体头冲突
+                if (k.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))
+                {
+                    contentType = v;
+                    continue;
+                }
+                request.Headers.TryAddWithoutValidation(k, v);
+            }
+        }
+
+        if (!isGet && !string.IsNullOrEmpty(body))
+            request.Content = new StringContent(body, Encoding.UTF8, contentType);
+
+        _logFile.Write($"[MES] -> {httpMethod} {url}");
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSec));
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            using var resp = await MesHttp.SendAsync(request, cts.Token).ConfigureAwait(true);
+            var text = await resp.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(true);
+            sw.Stop();
+
+            string? parsed = null;
+            string? parseError = null;
+            if (parseMode != "none" && !string.IsNullOrEmpty(text))
+            {
+                try
+                {
+                    parsed = parseMode == "json"
+                        ? ExtractJsonResult(text)
+                        : ExtractSoapResult(text, resultTag);
+                }
+                catch (Exception ex)
+                {
+                    parseError = ex.Message;
+                }
+            }
+
+            _logFile.Write($"[MES] <- HTTP {(int)resp.StatusCode} ({sw.ElapsedMilliseconds}ms)");
+            PostReply(id, true, new
+            {
+                status = (int)resp.StatusCode,
+                ok = resp.IsSuccessStatusCode,
+                elapsedMs = sw.ElapsedMilliseconds,
+                body = text,
+                parsed,
+                parseError,
+            }, null);
+        }
+        catch (OperationCanceledException)
+        {
+            sw.Stop();
+            _logFile.Write($"[MES] [ERROR] 请求超时 (>{timeoutSec}s)");
+            PostReply(id, false, null, $"请求超时（超过 {timeoutSec} 秒）");
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            _logFile.Write($"[MES] [ERROR] {ex.Message}");
+            PostReply(id, false, null, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 从 SOAP/XML 响应中提取返回值：优先取指定的结果节点（如 TestMachineCallProCP3Result），
+    /// 否则回退取 SOAP Body 下第一个包含文本的叶子节点。
+    /// </summary>
+    private static string? ExtractSoapResult(string responseXml, string resultTag)
+    {
+        var doc = XDocument.Parse(responseXml);
+
+        if (!string.IsNullOrEmpty(resultTag))
+        {
+            var byTag = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == resultTag);
+            if (byTag is not null) return byTag.Value;
+        }
+
+        // 约定：WebService 方法返回节点通常以 Result 结尾
+        var byResult = doc.Descendants().FirstOrDefault(e => e.Name.LocalName.EndsWith("Result", StringComparison.Ordinal));
+        if (byResult is not null) return byResult.Value;
+
+        return null;
+    }
+
+    /// <summary>
+    /// 从 REST JSON 响应中提取关键字段：优先 resultData，其次 result / data / message，
+    /// 都找不到则返回整段 JSON 文本，便于查看。
+    /// </summary>
+    private static string? ExtractJsonResult(string responseJson)
+    {
+        using var doc = JsonDocument.Parse(responseJson);
+        foreach (var key in new[] { "resultData", "result", "data", "message" })
+        {
+            if (TryFindJsonProperty(doc.RootElement, key, out var found))
+                return found.ValueKind == JsonValueKind.String ? found.GetString() : found.GetRawText();
+        }
+        return responseJson.Trim();
+    }
+
+    /// <summary>不区分大小写地在 JSON 树中递归查找首个匹配的属性。</summary>
+    private static bool TryFindJsonProperty(JsonElement element, string name, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var p in element.EnumerateObject())
+            {
+                if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = p.Value;
+                    return true;
+                }
+                if (TryFindJsonProperty(p.Value, name, out value))
+                    return true;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+                if (TryFindJsonProperty(item, name, out value))
+                    return true;
+        }
+        value = default;
+        return false;
     }
 
     private static ExcelSequenceSheet ParseFirstSheet(byte[] bytes, string fileName)
